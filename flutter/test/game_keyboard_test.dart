@@ -4,54 +4,58 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('GameKeyboardController', () {
-    test('press and release send one HID key lifetime', () {
-      final events = <(int, bool)>[];
+    test('press and release use the ordinary HID route', () {
+      final events = <(String, int, bool)>[];
       final controller = GameKeyboardController(
-        sendEvent: (usage, down) => events.add((usage, down)),
+        sendEvent: (character, usage, down) =>
+            events.add((character, usage, down)),
       );
 
       controller.press(1, 0x04);
       controller.release(1);
 
-      expect(events, [(0x04, true), (0x04, false)]);
+      expect(events, [('', 0x04, true), ('', 0x04, false)]);
     });
 
     test('same HID usage stays down until its final pointer releases', () {
-      final events = <(int, bool)>[];
+      final events = <(String, int, bool)>[];
       final controller = GameKeyboardController(
-        sendEvent: (usage, down) => events.add((usage, down)),
+        sendEvent: (character, usage, down) =>
+            events.add((character, usage, down)),
       );
 
       controller.press(1, 0x1A);
       controller.press(2, 0x1A);
       controller.release(1);
 
-      expect(events, [(0x1A, true)]);
+      expect(events, [('', 0x1A, true)]);
 
       controller.release(2);
-      expect(events, [(0x1A, true), (0x1A, false)]);
+      expect(events, [('', 0x1A, true), ('', 0x1A, false)]);
     });
 
     test('reusing a pointer releases its previous HID usage first', () {
-      final events = <(int, bool)>[];
+      final events = <(String, int, bool)>[];
       final controller = GameKeyboardController(
-        sendEvent: (usage, down) => events.add((usage, down)),
+        sendEvent: (character, usage, down) =>
+            events.add((character, usage, down)),
       );
 
       controller.press(1, 0x04);
       controller.press(1, 0x07);
 
       expect(events, [
-        (0x04, true),
-        (0x04, false),
-        (0x07, true),
+        ('', 0x04, true),
+        ('', 0x04, false),
+        ('', 0x07, true),
       ]);
     });
 
     test('releaseAll releases each held HID usage once', () {
-      final events = <(int, bool)>[];
+      final events = <(String, int, bool)>[];
       final controller = GameKeyboardController(
-        sendEvent: (usage, down) => events.add((usage, down)),
+        sendEvent: (character, usage, down) =>
+            events.add((character, usage, down)),
       );
 
       controller.press(1, 0x04);
@@ -63,10 +67,29 @@ void main() {
       controller.release(3);
 
       expect(events, [
-        (0x04, true),
-        (0x07, true),
-        (0x04, false),
-        (0x07, false),
+        ('', 0x04, true),
+        ('', 0x07, true),
+        ('', 0x04, false),
+        ('', 0x07, false),
+      ]);
+    });
+
+    test('connection wait releases held keys before reconnect', () {
+      final events = <(String, int, bool)>[];
+      final controller = GameKeyboardController(
+        sendEvent: (character, usage, down) =>
+            events.add((character, usage, down)),
+      );
+
+      controller.press(1, 0x1A);
+      controller.onConnectionWaitingChanged(false);
+      controller.onConnectionWaitingChanged(true);
+      controller.press(1, 0x1A);
+
+      expect(events, [
+        ('', 0x1A, true),
+        ('', 0x1A, false),
+        ('', 0x1A, true),
       ]);
     });
   });
@@ -120,14 +143,15 @@ void main() {
   });
 
   group('GameKeyboard', () {
-    late List<(int, bool)> events;
+    late List<(String, int, bool)> events;
     late GameKeyboardController controller;
 
     setUp(() {
-      final currentEvents = <(int, bool)>[];
+      final currentEvents = <(String, int, bool)>[];
       events = currentEvents;
       controller = GameKeyboardController(
-        sendEvent: (usage, down) => currentEvents.add((usage, down)),
+        sendEvent: (character, usage, down) =>
+            currentEvents.add((character, usage, down)),
       );
     });
 
@@ -155,10 +179,10 @@ void main() {
       );
       await tester.pump(const Duration(seconds: 2));
 
-      expect(events, [(0x1A, true)]);
+      expect(events, [('', 0x1A, true)]);
 
       await gesture.up();
-      expect(events, [(0x1A, true), (0x1A, false)]);
+      expect(events, [('', 0x1A, true), ('', 0x1A, false)]);
     });
 
     testWidgets('pointer cancellation releases its HID key', (tester) async {
@@ -171,7 +195,7 @@ void main() {
       );
       await gesture.cancel();
 
-      expect(events, [(0x1A, true), (0x1A, false)]);
+      expect(events, [('', 0x1A, true), ('', 0x1A, false)]);
     });
 
     testWidgets('two pointers hold W and D simultaneously', (tester) async {
@@ -188,21 +212,21 @@ void main() {
         pointer: 11,
       );
 
-      expect(events, [(0x1A, true), (0x07, true)]);
+      expect(events, [('', 0x1A, true), ('', 0x07, true)]);
 
       await wGesture.up();
       expect(events, [
-        (0x1A, true),
-        (0x07, true),
-        (0x1A, false),
+        ('', 0x1A, true),
+        ('', 0x07, true),
+        ('', 0x1A, false),
       ]);
 
       await dGesture.up();
       expect(events, [
-        (0x1A, true),
-        (0x07, true),
-        (0x1A, false),
-        (0x07, false),
+        ('', 0x1A, true),
+        ('', 0x07, true),
+        ('', 0x1A, false),
+        ('', 0x07, false),
       ]);
     });
 
@@ -218,7 +242,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('game-keyboard-close')));
 
       expect(closed, isTrue);
-      expect(events, [(0x1A, true), (0x1A, false)]);
+      expect(events, [('', 0x1A, true), ('', 0x1A, false)]);
       await gesture.up();
     });
 
@@ -236,26 +260,53 @@ void main() {
       expect(tester.getCenter(numpadNine).dx, lessThan(initialX));
     });
 
-    testWidgets('reports its blocking rect while mounted', (tester) async {
-      final rects = <Rect?>[];
+    testWidgets('overlay isolates key pointers from remote gestures',
+        (tester) async {
+      var remotePointerDowns = 0;
+      var remoteScaleUpdates = 0;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: GameKeyboard(
-              controller: controller,
-              onClose: () {},
-              onRectChanged: rects.add,
+            body: GameKeyboardOverlay(
+              remoteChild: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) => remotePointerDowns++,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onScaleUpdate: (_) => remoteScaleUpdates++,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              keyboard: GameKeyboard(
+                controller: controller,
+                onClose: () {},
+              ),
             ),
           ),
         ),
       );
-      await tester.pump();
 
-      expect(rects.whereType<Rect>(), hasLength(1));
-      expect(rects.whereType<Rect>().single.size, isNot(Size.zero));
+      final wGesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<int>(0x1A))),
+        pointer: 10,
+      );
+      final dGesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<int>(0x07))),
+        pointer: 11,
+      );
+      await wGesture.moveBy(const Offset(4, 0));
+      await dGesture.moveBy(const Offset(-4, 0));
+      await wGesture.up();
+      await dGesture.up();
 
-      await tester.pumpWidget(const SizedBox());
-      expect(rects.last, isNull);
+      expect(remotePointerDowns, 0);
+      expect(remoteScaleUpdates, 0);
+      expect(events, [
+        ('', 0x1A, true),
+        ('', 0x07, true),
+        ('', 0x1A, false),
+        ('', 0x07, false),
+      ]);
     });
 
     testWidgets('removing the keyboard releases held keys', (tester) async {
@@ -268,7 +319,7 @@ void main() {
 
       await tester.pumpWidget(const SizedBox());
 
-      expect(events, [(0x1A, true), (0x1A, false)]);
+      expect(events, [('', 0x1A, true), ('', 0x1A, false)]);
       await gesture.up();
     });
   });

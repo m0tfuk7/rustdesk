@@ -2,7 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-typedef GameKeyboardEventSender = void Function(int usbHidUsage, bool down);
+typedef GameKeyboardEventSender = void Function(
+    String character, int usbHidUsage, bool down);
 
 class GameKeyboardController {
   GameKeyboardController({required this.sendEvent});
@@ -24,7 +25,7 @@ class GameKeyboardController {
     final refCount = (_usageRefCounts[usbHidUsage] ?? 0) + 1;
     _usageRefCounts[usbHidUsage] = refCount;
     if (refCount == 1) {
-      sendEvent(usbHidUsage, true);
+      sendEvent('', usbHidUsage, true);
     }
   }
 
@@ -37,7 +38,7 @@ class GameKeyboardController {
     final refCount = _usageRefCounts[usage];
     if (refCount == null || refCount <= 1) {
       _usageRefCounts.remove(usage);
-      sendEvent(usage, false);
+      sendEvent('', usage, false);
     } else {
       _usageRefCounts[usage] = refCount - 1;
     }
@@ -48,7 +49,13 @@ class GameKeyboardController {
     _pointerUsages.clear();
     _usageRefCounts.clear();
     for (final usage in usages) {
-      sendEvent(usage, false);
+      sendEvent('', usage, false);
+    }
+  }
+
+  void onConnectionWaitingChanged(bool waiting) {
+    if (waiting) {
+      releaseAll();
     }
   }
 }
@@ -189,12 +196,10 @@ class GameKeyboard extends StatefulWidget {
     Key? key,
     required this.controller,
     required this.onClose,
-    this.onRectChanged,
   }) : super(key: key);
 
   final GameKeyboardController controller;
   final VoidCallback onClose;
-  final ValueChanged<Rect?>? onRectChanged;
 
   @override
   State<GameKeyboard> createState() => _GameKeyboardState();
@@ -202,22 +207,6 @@ class GameKeyboard extends StatefulWidget {
 
 class _GameKeyboardState extends State<GameKeyboard> {
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey _panelKey = GlobalKey();
-  Rect? _lastRect;
-
-  void _reportRect() {
-    final renderBox =
-        _panelKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null || !renderBox.attached) {
-      return;
-    }
-    final rect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-    if (rect == _lastRect) {
-      return;
-    }
-    _lastRect = rect;
-    widget.onRectChanged?.call(rect);
-  }
 
   void _scrollBy(double delta) {
     if (!_scrollController.hasClients) {
@@ -236,107 +225,122 @@ class _GameKeyboardState extends State<GameKeyboard> {
   @override
   void dispose() {
     widget.controller.releaseAll();
-    if (_lastRect != null) {
-      widget.onRectChanged?.call(null);
-    }
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _reportRect();
-      }
-    });
     final height = math.min(300.0, MediaQuery.sizeOf(context).height * 0.62);
-    return Material(
-      key: _panelKey,
-      color: const Color(0xE61A1A1A),
-      elevation: 12,
-      child: SizedBox(
-        height: height,
-        width: double.infinity,
-        child: Column(
-          children: [
-            SizedBox(
-              height: 36,
-              child: Row(
-                children: [
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Keyboard',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  IconButton(
-                    key: const ValueKey('game-keyboard-scroll-left'),
-                    padding: EdgeInsets.zero,
-                    color: Colors.white,
-                    icon: const Icon(Icons.chevron_left, size: 20),
-                    onPressed: () =>
-                        _scrollBy(-MediaQuery.sizeOf(context).width * 0.7),
-                  ),
-                  IconButton(
-                    key: const ValueKey('game-keyboard-scroll-right'),
-                    padding: EdgeInsets.zero,
-                    color: Colors.white,
-                    icon: const Icon(Icons.chevron_right, size: 20),
-                    onPressed: () =>
-                        _scrollBy(MediaQuery.sizeOf(context).width * 0.7),
-                  ),
-                  IconButton(
-                    key: const ValueKey('game-keyboard-close'),
-                    padding: EdgeInsets.zero,
-                    color: Colors.white,
-                    icon: const Icon(Icons.close, size: 20),
-                    onPressed: () {
-                      widget.controller.releaseAll();
-                      widget.onClose();
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final keyHeight =
-                      math.min(38.0, constraints.maxHeight / 6 - 2);
-                  return SingleChildScrollView(
-                    controller: _scrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final row in gameKeyboardRows)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (final key in row)
-                                  _GameKeyboardKeyButton(
-                                    key: ValueKey<int>(key.usbHidUsage),
-                                    definition: key,
-                                    controller: widget.controller,
-                                    height: keyHeight,
-                                  ),
-                              ],
-                            ),
-                        ],
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      child: Material(
+        color: const Color(0xE61A1A1A),
+        elevation: 12,
+        child: SizedBox(
+          height: height,
+          width: double.infinity,
+          child: Column(
+            children: [
+              SizedBox(
+                height: 36,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Keyboard',
+                        style: TextStyle(color: Colors.white),
                       ),
                     ),
-                  );
-                },
+                    IconButton(
+                      key: const ValueKey('game-keyboard-scroll-left'),
+                      padding: EdgeInsets.zero,
+                      color: Colors.white,
+                      icon: const Icon(Icons.chevron_left, size: 20),
+                      onPressed: () =>
+                          _scrollBy(-MediaQuery.sizeOf(context).width * 0.7),
+                    ),
+                    IconButton(
+                      key: const ValueKey('game-keyboard-scroll-right'),
+                      padding: EdgeInsets.zero,
+                      color: Colors.white,
+                      icon: const Icon(Icons.chevron_right, size: 20),
+                      onPressed: () =>
+                          _scrollBy(MediaQuery.sizeOf(context).width * 0.7),
+                    ),
+                    IconButton(
+                      key: const ValueKey('game-keyboard-close'),
+                      padding: EdgeInsets.zero,
+                      color: Colors.white,
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () {
+                        widget.controller.releaseAll();
+                        widget.onClose();
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final keyHeight =
+                        math.min(38.0, constraints.maxHeight / 6 - 2);
+                    return SingleChildScrollView(
+                      controller: _scrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final row in gameKeyboardRows)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (final key in row)
+                                    _GameKeyboardKeyButton(
+                                      key: ValueKey<int>(key.usbHidUsage),
+                                      definition: key,
+                                      controller: widget.controller,
+                                      height: keyHeight,
+                                    ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class GameKeyboardOverlay extends StatelessWidget {
+  const GameKeyboardOverlay({
+    Key? key,
+    required this.remoteChild,
+    required this.keyboard,
+  }) : super(key: key);
+
+  final Widget remoteChild;
+  final Widget keyboard;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(child: remoteChild),
+        Positioned(left: 0, right: 0, bottom: 0, child: keyboard),
+      ],
     );
   }
 }
