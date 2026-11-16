@@ -189,10 +189,12 @@ class GameKeyboard extends StatefulWidget {
     Key? key,
     required this.controller,
     required this.onClose,
+    this.onRectChanged,
   }) : super(key: key);
 
   final GameKeyboardController controller;
   final VoidCallback onClose;
+  final ValueChanged<Rect?>? onRectChanged;
 
   @override
   State<GameKeyboard> createState() => _GameKeyboardState();
@@ -200,6 +202,22 @@ class GameKeyboard extends StatefulWidget {
 
 class _GameKeyboardState extends State<GameKeyboard> {
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey _panelKey = GlobalKey();
+  Rect? _lastRect;
+
+  void _reportRect() {
+    final renderBox =
+        _panelKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.attached) {
+      return;
+    }
+    final rect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+    if (rect == _lastRect) {
+      return;
+    }
+    _lastRect = rect;
+    widget.onRectChanged?.call(rect);
+  }
 
   void _scrollBy(double delta) {
     if (!_scrollController.hasClients) {
@@ -218,14 +236,23 @@ class _GameKeyboardState extends State<GameKeyboard> {
   @override
   void dispose() {
     widget.controller.releaseAll();
+    if (_lastRect != null) {
+      widget.onRectChanged?.call(null);
+    }
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _reportRect();
+      }
+    });
     final height = math.min(300.0, MediaQuery.sizeOf(context).height * 0.62);
     return Material(
+      key: _panelKey,
       color: const Color(0xE61A1A1A),
       elevation: 12,
       child: SizedBox(

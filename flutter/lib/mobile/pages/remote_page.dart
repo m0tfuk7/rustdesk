@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import '../widgets/game_keyboard.dart';
 
 final initText = '1' * 1024;
 
@@ -103,6 +104,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final FocusNode _mobileFocusNode = FocusNode();
   final FocusNode _physicalFocusNode = FocusNode();
   var _showEdit = false; // use soft keyboard
+  bool _showGameKeyboard = false;
+  late final GameKeyboardController _gameKeyboardController;
+  Rect? _gameKeyboardBlockedRect;
 
   Worker? _waylandKeyboardGateWorker;
   bool _waylandKeyboardGateInitialized = false;
@@ -122,6 +126,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _gameKeyboardController = GameKeyboardController(
+      sendEvent: (usage, down) {
+        if (!down || (inputModel.keyboardPerm && !inputModel.isViewOnly)) {
+          inputModel.newKeyboardMode(kKeyFlutterKey, usage, down, false);
+        }
+      },
+    );
     gFFI.ffiModel.updateEventListener(sessionId, widget.id);
     gFFI.start(
       widget.id,
@@ -132,8 +143,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
-      gFFI.dialogManager
-          .showLoading(translate('Connecting...'), onCancel: closeConnection);
+      gFFI.dialogManager.showLoading(translate('Connecting...'), onCancel: () {
+        _gameKeyboardController.releaseAll();
+        closeConnection();
+      });
     });
     WakelockManager.enable(_uniqueKey);
     _physicalFocusNode.requestFocus();
@@ -175,9 +188,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     // Require explicit user confirmation before allowing soft-keyboard and
     // clipboard-assisted text input. Physical keyboard events are not gated here.
     _waylandKeyboardGateWorker = ever(gFFI.ffiModel.pi.isSet, (bool isSet) {
-      if (isSet) {
-        _initWaylandKeyboardGateIfNeeded();
+      if (!isSet) {
+        _gameKeyboardController.releaseAll();
+        return;
       }
+      _initWaylandKeyboardGateIfNeeded();
     });
     if (gFFI.ffiModel.pi.isSet.value) {
       _initWaylandKeyboardGateIfNeeded();
@@ -188,6 +203,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   Future<void> dispose() async {
     HardwareKeyboard.instance.removeHandler(_handleLocalKeyEvent);
     WidgetsBinding.instance.removeObserver(this);
+    _gameKeyboardController.releaseAll();
+    if (_gameKeyboardBlockedRect != null) {
+      gFFI.cursorModel.removeBlockedRect(_gameKeyboardBlockedRect!);
+      _gameKeyboardBlockedRect = null;
+    }
     // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
     // after several awaits (canvas save, image update, the `enable_soft_keyboard`
     // platform call), so if the app is backgrounded while this page is disposing,
@@ -227,6 +247,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       trySyncClipboard();
+    } else {
+      _gameKeyboardController.releaseAll();
     }
   }
 
@@ -440,6 +462,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void openKeyboard() {
+    if (_showGameKeyboard) {
+      _gameKeyboardController.releaseAll();
+      setState(() => _showGameKeyboard = false);
+    }
     final allowWaylandKeyboard =
         mainGetPeerBoolOptionSync(widget.id, kPeerOptionAllowWaylandKeyboard);
     if (shouldShowWaylandKeyboardPrompt(
@@ -496,6 +522,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
     return WillPopScope(
       onWillPop: () async {
+        _gameKeyboardController.releaseAll();
         clientClose(sessionId, gFFI);
         return false;
       },
@@ -584,7 +611,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   bool _handleLocalKeyEvent(KeyEvent event) => handleMobileLocalKeyEvent(event,
-      remoteFocused: _physicalFocusNode.hasPrimaryFocus, inputModel: inputModel);
+      remoteFocused: _physicalFocusNode.hasPrimaryFocus,
+      inputModel: inputModel);
 
   Widget getRawPointerAndKeyBody(Widget child) {
     final ffiModel = Provider.of<FfiModel>(context);
@@ -617,6 +645,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       color: Colors.white,
                       icon: Icon(Icons.clear),
                       onPressed: () {
+                        _gameKeyboardController.releaseAll();
                         clientClose(sessionId, gFFI);
                       },
                     ),
@@ -649,6 +678,27 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                   color: Colors.white,
                                   icon: Icon(Icons.keyboard),
                                   onPressed: openKeyboard),
+                              IconButton(
+                                color: _showGameKeyboard
+                                    ? Colors.amber
+                                    : Colors.white,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 36, height: 48),
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.sports_esports),
+                                onPressed: () {
+                                  _gameKeyboardController.releaseAll();
+                                  gFFI.invokeMethod(
+                                      "enable_soft_keyboard", false);
+                                  _mobileFocusNode.unfocus();
+                                  _physicalFocusNode.requestFocus();
+                                  setState(() {
+                                    _showEdit = false;
+                                    _showGestureHelp = false;
+                                    _showGameKeyboard = !_showGameKeyboard;
+                                  });
+                                },
+                              ),
                               IconButton(
                                 color: Colors.white,
                                 icon: Icon(gFFI.ffiModel.touchMode
@@ -768,8 +818,39 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               ffi: gFFI,
             ));
           }
+          if (_showGameKeyboard &&
+              gFFI.ffiModel.keyboard &&
+              !gFFI.ffiModel.viewOnly) {
+            paints.add(Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: GameKeyboard(
+                controller: _gameKeyboardController,
+                onClose: () {
+                  if (mounted) {
+                    setState(() => _showGameKeyboard = false);
+                  }
+                },
+                onRectChanged: _updateGameKeyboardBlockedRect,
+              ),
+            ));
+          }
           return paints;
         }()));
+  }
+
+  void _updateGameKeyboardBlockedRect(Rect? rect) {
+    if (rect == _gameKeyboardBlockedRect) {
+      return;
+    }
+    if (_gameKeyboardBlockedRect != null) {
+      gFFI.cursorModel.removeBlockedRect(_gameKeyboardBlockedRect!);
+    }
+    if (rect != null) {
+      gFFI.cursorModel.addBlockedRect(rect);
+    }
+    _gameKeyboardBlockedRect = rect;
   }
 
   Widget getBodyForDesktopWithListener() {

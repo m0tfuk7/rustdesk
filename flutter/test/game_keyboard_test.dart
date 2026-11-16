@@ -236,6 +236,28 @@ void main() {
       expect(tester.getCenter(numpadNine).dx, lessThan(initialX));
     });
 
+    testWidgets('reports its blocking rect while mounted', (tester) async {
+      final rects = <Rect?>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GameKeyboard(
+              controller: controller,
+              onClose: () {},
+              onRectChanged: rects.add,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(rects.whereType<Rect>(), hasLength(1));
+      expect(rects.whereType<Rect>().single.size, isNot(Size.zero));
+
+      await tester.pumpWidget(const SizedBox());
+      expect(rects.last, isNull);
+    });
+
     testWidgets('removing the keyboard releases held keys', (tester) async {
       await pumpKeyboard(tester);
       final w = find.byKey(const ValueKey<int>(0x1A));
