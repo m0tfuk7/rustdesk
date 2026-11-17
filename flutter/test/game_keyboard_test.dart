@@ -247,6 +247,8 @@ void main() {
 
     testWidgets('scroll controls reveal keys beyond the narrow viewport',
         (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       await pumpKeyboard(tester);
       final pause = find.byKey(const ValueKey<int>(0x48));
       final initialX = tester.getCenter(pause).dx;
@@ -270,6 +272,8 @@ void main() {
       }
 
       final unit = keyRect(0x1A).width;
+      expectClose(unit, 44 * 2 / 3);
+      expectClose(keyRect(0x1A).height, 38 * 2 / 3);
       expectClose(keyRect(0x2A).width, unit * 2);
       expectClose(keyRect(0x31).width, unit * 1.5);
       expectClose(keyRect(0x28).width, unit * 2.25);
@@ -281,6 +285,7 @@ void main() {
       }
 
       final leftColumn = keyRect(0x49).left;
+      expectClose(leftColumn - mainRight, 3);
       for (final usage in [0x46, 0x4C, 0x50]) {
         expectClose(keyRect(usage).left, leftColumn);
       }

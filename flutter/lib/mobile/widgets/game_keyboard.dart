@@ -65,33 +65,37 @@ class GameKeyboardKey {
     this.label,
     this.usbHidUsage, {
     this.width = 1,
-    this.spaceBefore = 0,
+    this.gapBefore = 0,
   });
 
   final String label;
   final int usbHidUsage;
   final double width;
-  final double spaceBefore;
+  final double gapBefore;
 }
 
-const double _gameKeyboardUnit = 44;
+const double _gameKeyboardScale = 2 / 3;
+const double _gameKeyboardUnit = 44 * _gameKeyboardScale;
+const double _gameKeyboardMaxHeight = 300 * _gameKeyboardScale;
+const double _gameKeyboardMaxKeyHeight = 38 * _gameKeyboardScale;
+const double _gameKeyboardRightGap = 3;
 
 const List<List<GameKeyboardKey>> gameKeyboardRows = [
   [
     GameKeyboardKey('Esc', 0x29),
-    GameKeyboardKey('F1', 0x3A, spaceBefore: 1),
+    GameKeyboardKey('F1', 0x3A, gapBefore: _gameKeyboardUnit),
     GameKeyboardKey('F2', 0x3B),
     GameKeyboardKey('F3', 0x3C),
     GameKeyboardKey('F4', 0x3D),
-    GameKeyboardKey('F5', 0x3E, spaceBefore: 0.5),
+    GameKeyboardKey('F5', 0x3E, gapBefore: _gameKeyboardUnit * 0.5),
     GameKeyboardKey('F6', 0x3F),
     GameKeyboardKey('F7', 0x40),
     GameKeyboardKey('F8', 0x41),
-    GameKeyboardKey('F9', 0x42, spaceBefore: 0.5),
+    GameKeyboardKey('F9', 0x42, gapBefore: _gameKeyboardUnit * 0.5),
     GameKeyboardKey('F10', 0x43),
     GameKeyboardKey('F11', 0x44),
     GameKeyboardKey('F12', 0x45),
-    GameKeyboardKey('PrtSc', 0x46, spaceBefore: 0.5),
+    GameKeyboardKey('PrtSc', 0x46, gapBefore: _gameKeyboardRightGap),
     GameKeyboardKey('ScrLk', 0x47),
     GameKeyboardKey('Pause', 0x48),
   ],
@@ -110,7 +114,7 @@ const List<List<GameKeyboardKey>> gameKeyboardRows = [
     GameKeyboardKey('-', 0x2D),
     GameKeyboardKey('=', 0x2E),
     GameKeyboardKey('Backspace', 0x2A, width: 2),
-    GameKeyboardKey('Ins', 0x49, spaceBefore: 0.5),
+    GameKeyboardKey('Ins', 0x49, gapBefore: _gameKeyboardRightGap),
     GameKeyboardKey('Home', 0x4A),
     GameKeyboardKey('PgUp', 0x4B),
   ],
@@ -129,7 +133,7 @@ const List<List<GameKeyboardKey>> gameKeyboardRows = [
     GameKeyboardKey('[', 0x2F),
     GameKeyboardKey(']', 0x30),
     GameKeyboardKey('\\ |', 0x31, width: 1.5),
-    GameKeyboardKey('Del', 0x4C, spaceBefore: 0.5),
+    GameKeyboardKey('Del', 0x4C, gapBefore: _gameKeyboardRightGap),
     GameKeyboardKey('End', 0x4D),
     GameKeyboardKey('PgDn', 0x4E),
   ],
@@ -161,7 +165,11 @@ const List<List<GameKeyboardKey>> gameKeyboardRows = [
     GameKeyboardKey('.', 0x37),
     GameKeyboardKey('/', 0x38),
     GameKeyboardKey('R Shift', 0xE5, width: 2.75),
-    GameKeyboardKey('↑', 0x52, spaceBefore: 1.5),
+    GameKeyboardKey(
+      '↑',
+      0x52,
+      gapBefore: _gameKeyboardUnit + _gameKeyboardRightGap,
+    ),
   ],
   [
     GameKeyboardKey('L Ctrl', 0xE0, width: 1.25),
@@ -172,7 +180,7 @@ const List<List<GameKeyboardKey>> gameKeyboardRows = [
     GameKeyboardKey('R Win', 0xE7, width: 1.25),
     GameKeyboardKey('Menu', 0x65, width: 1.25),
     GameKeyboardKey('R Ctrl', 0xE4, width: 1.25),
-    GameKeyboardKey('←', 0x50, spaceBefore: 0.5),
+    GameKeyboardKey('←', 0x50, gapBefore: _gameKeyboardRightGap),
     GameKeyboardKey('↓', 0x51),
     GameKeyboardKey('→', 0x4F),
   ],
@@ -218,7 +226,10 @@ class _GameKeyboardState extends State<GameKeyboard> {
 
   @override
   Widget build(BuildContext context) {
-    final height = math.min(300.0, MediaQuery.sizeOf(context).height * 0.62);
+    final height = math.min(
+      _gameKeyboardMaxHeight,
+      MediaQuery.sizeOf(context).height * 0.62,
+    );
     return Listener(
       behavior: HitTestBehavior.opaque,
       child: Material(
@@ -272,8 +283,10 @@ class _GameKeyboardState extends State<GameKeyboard> {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final keyHeight =
-                        math.min(38.0, constraints.maxHeight / 6 - 2);
+                    final keyHeight = math.min(
+                      _gameKeyboardMaxKeyHeight,
+                      constraints.maxHeight / 6 - 2,
+                    );
                     return SingleChildScrollView(
                       controller: _scrollController,
                       scrollDirection: Axis.horizontal,
@@ -288,11 +301,8 @@ class _GameKeyboardState extends State<GameKeyboard> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   for (final key in row) ...[
-                                    if (key.spaceBefore > 0)
-                                      SizedBox(
-                                        width:
-                                            _gameKeyboardUnit * key.spaceBefore,
-                                      ),
+                                    if (key.gapBefore > 0)
+                                      SizedBox(width: key.gapBefore),
                                     _GameKeyboardKeyButton(
                                       key: ValueKey<int>(key.usbHidUsage),
                                       definition: key,
