@@ -95,13 +95,13 @@ void main() {
   });
 
   group('game keyboard catalog', () {
-    test('contains unique usages for the complete common PC keyboard', () {
+    test('contains exactly the standard 87-key TKL usages', () {
       final usages = gameKeyboardRows
           .expand((row) => row)
           .map((key) => key.usbHidUsage)
           .toList();
 
-      expect(usages, isNotEmpty);
+      expect(usages, hasLength(87));
       expect(usages, everyElement(greaterThan(0)));
       expect(usages.toSet(), hasLength(usages.length));
       expect(
@@ -120,11 +120,6 @@ void main() {
           0x50,
           0x51,
           0x52,
-          0x53,
-          0x54,
-          0x58,
-          0x59,
-          0x63,
           0xE0,
           0xE1,
           0xE2,
@@ -138,6 +133,10 @@ void main() {
       expect(
         usages.where((usage) => usage >= 0x3A && usage <= 0x45),
         hasLength(12),
+      );
+      expect(
+        usages.where((usage) => usage >= 0x53 && usage <= 0x63),
+        isEmpty,
       );
     });
   });
@@ -249,15 +248,52 @@ void main() {
     testWidgets('scroll controls reveal keys beyond the narrow viewport',
         (tester) async {
       await pumpKeyboard(tester);
-      final numpadNine = find.byKey(const ValueKey<int>(0x61));
-      final initialX = tester.getCenter(numpadNine).dx;
+      final pause = find.byKey(const ValueKey<int>(0x48));
+      final initialX = tester.getCenter(pause).dx;
 
       await tester.tap(
         find.byKey(const ValueKey('game-keyboard-scroll-right')),
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getCenter(numpadNine).dx, lessThan(initialX));
+      expect(tester.getCenter(pause).dx, lessThan(initialX));
+    });
+
+    testWidgets('uses standard TKL key widths and right-side alignment',
+        (tester) async {
+      await pumpKeyboard(tester);
+
+      Rect keyRect(int usage) =>
+          tester.getRect(find.byKey(ValueKey<int>(usage)));
+      void expectClose(double actual, double expected) {
+        expect(actual, closeTo(expected, 0.01));
+      }
+
+      final unit = keyRect(0x1A).width;
+      expectClose(keyRect(0x2A).width, unit * 2);
+      expectClose(keyRect(0x31).width, unit * 1.5);
+      expectClose(keyRect(0x28).width, unit * 2.25);
+      expectClose(keyRect(0xE5).width, unit * 2.75);
+
+      final mainRight = keyRect(0x2A).right;
+      for (final usage in [0x45, 0x31, 0x28, 0xE5]) {
+        expectClose(keyRect(usage).right, mainRight);
+      }
+
+      final leftColumn = keyRect(0x49).left;
+      for (final usage in [0x46, 0x4C, 0x50]) {
+        expectClose(keyRect(usage).left, leftColumn);
+      }
+
+      final middleColumn = keyRect(0x4A).left;
+      for (final usage in [0x47, 0x4D, 0x52, 0x51]) {
+        expectClose(keyRect(usage).left, middleColumn);
+      }
+
+      final rightColumn = keyRect(0x4B).left;
+      for (final usage in [0x48, 0x4E, 0x4F]) {
+        expectClose(keyRect(usage).left, rightColumn);
+      }
     });
 
     testWidgets('overlay isolates key pointers from remote gestures',

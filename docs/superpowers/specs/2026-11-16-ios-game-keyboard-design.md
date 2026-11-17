@@ -8,7 +8,8 @@ Add an optional game keyboard overlay to the RustDesk mobile remote-control page
 
 - A game-controller button appears beside the existing keyboard button for non-Android remote peers that permit keyboard input.
 - Tapping it opens a fixed, scrollable PC keyboard overlay over the remote image. Tapping the close button returns to the ordinary remote-control view.
-- The overlay exposes the common full PC keyboard: Escape, F1-F12, alphanumeric and punctuation keys, modifiers, navigation keys, arrows, Windows/Menu keys, and the numeric keypad.
+- The overlay exposes a standard ANSI TKL 87-key keyboard: Escape, F1-F12, alphanumeric and punctuation keys, modifiers, navigation keys, arrows, and Windows/Menu keys. It omits the numeric keypad.
+- Function-key groups, standard-width Backspace/Backslash/Enter/Shift keys, the six-key navigation block, and the inverted-T arrow cluster retain their familiar spacing and alignment instead of being packed together.
 - Each key stays pressed for the lifetime of the finger touching it. Multiple fingers can hold different keys, so combinations such as `W+D`, `Shift+W`, and `Ctrl+Alt+Delete` work.
 - The existing native text keyboard continues to handle chat and normal text entry. The game overlay and native text keyboard are mutually exclusive.
 
@@ -24,7 +25,7 @@ All held keys are released when the overlay closes or is removed, the remote pag
 
 ## Scope
 
-The first version uses one fixed complete keyboard layout with horizontal scrolling on narrow screens. It does not include layout editing, draggable keys, saved profiles, macros, or server changes. The feature is additive: when the overlay is hidden, the existing text, physical-keyboard, mouse, and gesture paths retain their current implementation.
+The first version uses one fixed ANSI TKL 87-key layout with horizontal scrolling on narrow screens. It does not include a numeric keypad, layout editing, draggable keys, saved profiles, macros, or server changes. The feature is additive: when the overlay is hidden, the existing text, physical-keyboard, mouse, and gesture paths retain their current implementation.
 
 ## Files
 
