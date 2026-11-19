@@ -493,6 +493,8 @@ fn run_window_focus(sp: EmptyExtraFieldService, state: &mut StateWindowFocus) ->
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum KeysDown {
     RdevKey(RawKey),
+    #[cfg(target_os = "windows")]
+    MapScanCode(KeyCode),
     EnigoKey(u64),
 }
 
@@ -1003,6 +1005,8 @@ fn release_record_key(record_key: KeysDown) {
         KeysDown::RdevKey(raw_key) => {
             simulate_(&EventType::KeyRelease(RdevKey::RawKey(raw_key)));
         }
+        #[cfg(target_os = "windows")]
+        KeysDown::MapScanCode(code) => simulate_windows_map_scan_code(code, false),
         KeysDown::EnigoKey(key) => {
             if let Some(key) = record_key_to_key(key) {
                 ENIGO.lock().unwrap().key_up(key);
@@ -1620,7 +1624,10 @@ pub fn reset_input_ondisconn() {
 
 fn sim_rdev_rawkey_position(code: KeyCode, keydown: bool) {
     #[cfg(target_os = "windows")]
-    let rawkey = RawKey::ScanCode(code);
+    {
+        record_pressed_key(KeysDown::MapScanCode(code), keydown);
+        simulate_windows_map_scan_code(code, keydown);
+    }
     #[cfg(target_os = "linux")]
     let rawkey = RawKey::LinuxXorgKeycode(code);
     // // to-do: test android
@@ -1629,9 +1636,27 @@ fn sim_rdev_rawkey_position(code: KeyCode, keydown: bool) {
     #[cfg(target_os = "macos")]
     let rawkey = RawKey::MacVirtualKeycode(code);
 
-    // map mode(1): Send keycode according to the peer platform.
-    record_pressed_key(KeysDown::RdevKey(rawkey), keydown);
+    #[cfg(not(target_os = "windows"))]
+    {
+        // map mode(1): Send keycode according to the peer platform.
+        record_pressed_key(KeysDown::RdevKey(rawkey), keydown);
 
+        let event_type = if keydown {
+            EventType::KeyPress(RdevKey::RawKey(rawkey))
+        } else {
+            EventType::KeyRelease(RdevKey::RawKey(rawkey))
+        };
+        simulate_(&event_type);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn simulate_windows_map_scan_code(code: KeyCode, keydown: bool) {
+    if crate::platform::windows::interception::send_scan_code(code as u32, keydown) {
+        return;
+    }
+
+    let rawkey = RawKey::ScanCode(code);
     let event_type = if keydown {
         EventType::KeyPress(RdevKey::RawKey(rawkey))
     } else {
